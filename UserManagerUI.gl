@@ -1,0 +1,169 @@
+
+class UserManagerUI
+	isa IPageUI
+[
+
+	constructor () end
+
+	def control -> this.layoutCtrl
+	def commandBar end
+
+	----------------------------------------------------------------------------
+
+	function cmdNewUser () end
+
+	function realize () end
+	function realizeConfig () end
+	function realizeUserList () end
+
+	function allowRegBtn.onaction () end
+	function allowDisposableBtn.onaction () end
+
+	var layoutCtrl:LayoutGridControlType
+	var listCtrl:TableControlType
+
+	var allowRegBtn:ButtonControlType
+	var allowDisposableBtn:ButtonControlType
+]
+
+function UserManagerUI.constructor () do
+
+	this.listCtrl = TableControlType([
+		placeholder = "Access Denied."
+	])
+
+	var allowRegText = TextControlType([
+		data="Allow new account registration",
+		align="left middle"
+	])
+	this.allowRegBtn = ButtonControlType([
+	])
+
+	var allowDisposableText = TextControlType([
+		data="Allow disposable accounts",
+		align="left middle"
+	])
+	this.allowDisposableBtn = ButtonControlType([
+	])
+
+	var configCtrl = LayoutGridControlType([
+		colWidth = [ "240px", "140px", "auto" ],
+		rows = 3,
+		rowHeight = [ "56px", "56px", "auto" ],
+		content = [
+			[	control=allowRegText,												row=0,	col=0,	],
+			[	control=this.allowRegBtn,											row=0,	col=1,	],
+			[	control=allowDisposableText,										row=1,	col=0,	],
+			[	control=this.allowDisposableBtn,									row=1,	col=1,	],
+		]
+	])
+
+	this.layoutCtrl = LayoutGridControlType([
+		cols = 4,
+		rows = 2,
+		rowHeight = [ "240px", "auto" ],
+		background = "Neutral_Paper",
+		content = [
+			[	control=configCtrl,			row=0,	col=0,	width=4,	height=1	],
+			[	control=this.listCtrl,		row=1,	col=0,	width=4,	height=1	],
+		]
+	])
+end
+
+def UserManagerUI.commandBar do
+	return [
+		[	label="New User",	fn onaction () -> this.cmdNewUser() ],
+		[	label="Refresh",	fn onaction () -> this.realize() ],
+	]
+end
+
+
+function UserManagerUI.realize () do
+	this.realizeConfig()
+	this.realizeUserList()
+end
+
+function UserManagerUI.realizeConfig () do
+	if User.inGroup("$directors") do
+		var userConfig = User.getConfig()
+
+		this.allowRegBtn.disabled = false
+		this.allowRegBtn.label = if userConfig.allowAccountRegistration -> "Enabled" else -> "Disabled"
+		this.allowRegBtn.background = if userConfig.allowAccountRegistration -> "Green" else -> "Red_Paper"
+		this.allowRegBtn.color = if userConfig.allowAccountRegistration -> "Green_Text" else -> "Red_Ink"
+
+		this.allowDisposableBtn.disabled = false
+		this.allowDisposableBtn.label = if userConfig.allowDisposableAccounts -> "Enabled" else -> "Disabled"
+		this.allowDisposableBtn.background = if userConfig.allowDisposableAccounts -> "Green" else -> "Red_Paper"
+		this.allowDisposableBtn.color = if userConfig.allowDisposableAccounts -> "Green_Text" else -> "Red_Ink"
+
+	else do
+		this.allowRegBtn.disabled = true
+		this.allowRegBtn.label = "No Access"
+
+		this.allowDisposableBtn.disabled = true
+		this.allowDisposableBtn.label = "No Access"
+	end
+end
+
+function UserManagerUI.realizeUserList () do
+	if User.inGroup("$directors") do
+		this.listCtrl.data = User.getUsers()
+	end
+end
+
+function UserManagerUI.allowRegBtn.onaction () do
+	var userConfig = User.getConfig()
+	if userConfig.allowAccountRegistration do
+		var ok = UI.dialog("Do you wish to disable account registration? This will prevent users from creating their own accounts.")
+		if ok do
+			User.setConfig([ allowAccountRegistration=false ])
+			this.realizeConfig()
+		end
+	else do
+		var ok = UI.dialog("Do you wish to enable account registration? This will allow any user to register a new account.")
+		if ok do
+			User.setConfig([ allowAccountRegistration=true ])
+			this.realizeConfig()
+		end
+	end
+end
+
+function UserManagerUI.allowDisposableBtn.onaction () do
+	var userConfig = User.getConfig()
+	if userConfig.allowDisposableAccounts do
+		var ok = UI.dialog("Do you wish to disable disposable accounts? This will prevent anonymous users from connecting.")
+		if ok do
+			User.setConfig([ allowDisposableAccounts=false ])
+			this.realizeConfig()
+		end
+	else do
+		var ok = UI.dialog("Do you wish to enable disposable accounts? This will allow anonymous users to run programs.")
+		if ok do
+			User.setConfig([ allowDisposableAccounts=true ])
+			this.realizeConfig()
+		end
+	end
+end
+
+function UserManagerUI.cmdNewUser () do
+	schema NewUserRecord [
+		var name:String as "Username"
+		var email:String as "Email"
+	]
+
+	var desc = UI.dialog(NewUserRecord)
+	if !desc do
+		return false
+	end
+
+	if !desc.name do
+		desc.name = desc.email
+	end
+
+	var userID = User.createUser(desc)
+	UI.dialog("Password emailed to: " + desc.email)
+
+	this.realizeUserList()
+	return true
+end

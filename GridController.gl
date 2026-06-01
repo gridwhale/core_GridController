@@ -1,0 +1,79 @@
+--------------------------------------------------------------------------------
+|	GridController
+|
+|	Version 4
+|	© 2023-2025 GridWhale Corporation. All Rights Reserved.
+--------------------------------------------------------------------------------
+
+using Code
+using Data
+using UI
+using User
+using Arcology
+
+if !User.checkLicense("development/engineerFeatures") do
+	UI.dialog("Grid Controller requires an Engineer Account.")
+	return false
+end
+
+|	PAGE MENU
+
+def PAGE_MENU = Table([
+	[	id=,			title=,					pageObj=,			acl=				],
+	-------------------------------------------------------------------------------------
+	[	"status",		"Status",				StatusUI(), 		null,				],
+	[	"analytics",	"Analytics",			AnalyticsUI(),		null,				],
+	[	"fileTypes",	"File Types",			FileTypesUI(),		null,				],
+	[	"users",		"Users",				UserManagerUI(),	"$directors",		],
+	[	"domains",		"Host Names",			DomainsUI(),		"$directors",		],
+	[	"github",		"GitHub",				GitHubUI(),			null,				],
+	[	"secrets",		"Secrets",				SecretManagerUI(),	"$directors",		],
+	[	"about",		"About",				AboutUI(),			null,				],
+])
+
+class IPageUI [
+	def control -> null
+	def commandBar -> null
+	function realize () do end
+]
+
+var menuCtrl = ListboxControlType([
+	border = "wide",
+	background = "Neutral_20",
+	data = PAGE_MENU.filter(fn(row)->!row.acl || User.inGroup(row.acl)),
+])
+
+function menuCtrl.onchange () do
+	RealizeMainPage()
+end
+
+|	MAIN LAYOUT
+
+var layoutCtrl = LayoutGridControlType([
+	cols = 2,
+	rows = 1,
+	colSize = ["240px", "auto"],
+
+	content = [
+		[					col=0,	row=0,	control=menuCtrl		],
+		[	id="container",	col=1,	row=0,	control=null			],
+	]
+])
+
+function RealizeMainPage () do
+	var entry = menuCtrl.selectionData
+	if entry && entry.pageObj do
+		layoutCtrl.setAt("container", entry.pageObj.control)
+		entry.pageObj.realize()
+		UI.setCommands(entry.pageObj.commandBar)
+	end
+end
+
+|	MAIN
+
+menuCtrl.selection = "status"
+RealizeMainPage()
+
+UI.show(layoutCtrl)
+UI.run()
+return 0

@@ -1,0 +1,98 @@
+--------------------------------------------------------------------------------
+|	GridController - FileTypesUI
+|
+|	© 2023 GridWhale Corporation. All Rights Reserved.
+--------------------------------------------------------------------------------
+
+class FileTypesUI
+	isa IPageUI
+[
+
+	def control -> this.layoutCtrl
+	def commandBar end
+	function realize () do end
+
+	----------------------------------------------------------------------------
+
+	constructor () end
+	function AddFileType () end
+	function EditFileType (fileTypeID) end
+
+	var fileTypesDS = Data.open("/grid/fileTypes")
+
+	var layoutCtrl = UI.create("layoutGrid")
+	var tableCtrl = UI.create("table")
+]
+
+function FileTypesUI.constructor () do
+
+	var fileTypes = this.fileTypesDS.getValue()
+	
+	this.tableCtrl.data = this.fileTypesDS
+	this.tableCtrl.selection = fileTypes.getColumn("id")[0]
+	this.tableCtrl.design = [
+		columns= [
+			[	id="id",			label="Type" 	],
+			[	id="name",			label="Name"	],
+			[	id="icon",			label="Icon"	],
+			[	id="viewProgram",	label="Viewer"	],
+			[	id="editProgram",	label="Editor"	],
+			[	id="owner",			label="Owner"	],
+		]
+	]
+
+	this.layoutCtrl.cols = 1
+	this.layoutCtrl.rows = 1
+	this.layoutCtrl.content = [
+		[	col=0,	row=0,	control=this.tableCtrl ]
+	]
+	this.layoutCtrl.background = "Neutral_Paper"
+
+end
+
+def FileTypesUI.commandBar do
+	return [
+		[	label="Add",		fn onaction () -> this.AddFileType() ],
+		[	label="Edit",		fn onaction () -> this.EditFileType(this.tableCtrl.selection) ],
+	]
+end
+
+function FileTypesUI.AddFileType () do
+
+	var formCtrl = UI.create("form")
+	formCtrl.content = [
+		[ id="id",			label="Type",		type=String ],
+		[ id="name",		label="Name",		type=String ],
+		[ id="icon",		label="Icon ID",	type=String ],
+		[ id="editProgram",	label="Editor ID",	type=String ],
+	]
+	
+	var result = UI.dialog(formCtrl, null, [ title="New File Type" ])
+	if !result || result.id == "" do
+		return false
+	end
+
+	this.fileTypesDS.update(result.id, result)
+end
+
+function FileTypesUI.EditFileType (fileTypeID) do
+	var fileTypeEntry = this.fileTypesDS.getValue()[fileTypeID]
+	if !fileTypeEntry do
+		return false
+	end
+
+	var formCtrl = UI.create("form")
+	formCtrl.content = [
+		[ id="name",		label="Name",		type=String ],
+		[ id="icon",		label="Icon ID",	type=String ],
+		[ id="editProgram",	label="Editor ID",	type=String ],
+	]
+	formCtrl.data = fileTypeEntry
+	
+	var result = UI.dialog(formCtrl, fileTypeEntry, [ title=fileTypeEntry.id ])
+	if !result do
+		return false
+	end
+
+	this.fileTypesDS.update(fileTypeID, result)
+end

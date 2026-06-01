@@ -1,0 +1,86 @@
+--------------------------------------------------------------------------------
+|	GridController - DomainsUI
+|
+|	© 2026 GridWhale Corporation. All Rights Reserved.
+--------------------------------------------------------------------------------
+
+class DomainsUI
+	isa IPageUI
+[
+
+	def control -> this.layoutCtrl
+	def commandBar end
+	function realize () end
+
+	function AddBinding () end
+	function RemoveBinding (id) end
+
+	----------------------------------------------------------------------------
+
+	constructor () end
+
+	var layoutCtrl:LayoutGridControlType
+	var tableCtrl:TableControlType
+
+	var hostTable
+]
+
+function DomainsUI.constructor () do
+
+	this.tableCtrl = TableControlType([
+		columns = ["hostname", "service", "package", "ports", "protocols", "paths"]
+	])
+
+	this.layoutCtrl = LayoutGridControlType([
+		rows = 1,
+		cols = 1,
+		content = [
+			[	col=0,	row=0,	control=this.tableCtrl	]
+		],
+		background = "Neutral_Paper"
+	])
+end
+
+def DomainsUI.commandBar do
+	return [
+		[	label="Add",		fn onaction () -> this.AddBinding() ],
+		[	label="Delete",		fn onaction () -> this.RemoveBinding(this.tableCtrl.selection) ],
+	]
+end
+
+function DomainsUI.realize () do
+	this.hostTable = Arcology.listRoutes()
+		.groupBy(.hostname, .service)
+		.summarize([
+			id = .hostname + "|" + .service,
+			hostname = .hostname,
+			service = .service,
+			package = .package,
+			ports = String(Array(.port)),
+			protocols = String(Array(.protocol)),
+			paths = String(Array(.urlPath))
+		])
+
+	this.tableCtrl.data = this.hostTable
+end
+
+function DomainsUI.AddBinding () do
+end
+
+function DomainsUI.RemoveBinding (id) do
+	var row = this.hostTable[id]
+	var hostname = row.hostname
+	var service = row.service
+	if !hostname || !service do
+		return false
+	end
+
+	var result = UI.dialog("Are you sure you wish to delete the binding from " + hostname + " to " + service + "?")
+	if !result do
+		return false
+	end
+
+	Arcology.unbindHost(hostname, service)
+	this.realize()
+end
+

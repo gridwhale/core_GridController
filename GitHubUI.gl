@@ -1,0 +1,179 @@
+
+class GitHubUI
+	isa IPageUI
+[
+	constructor () end
+
+	def control -> this.layoutCtrl
+	def commandBar -> []
+	function realize () end
+
+	----------------------------------------------------------------------------
+
+	function realizeCommands () end
+
+	function applyCtrl.onaction () end
+	function cancelCtrl.onaction () end
+
+	function appSlugCtrl.onchange () do this.modified = true this.realizeCommands() end
+	function appIDCtrl.onchange () do this.modified = true this.realizeCommands() end
+	function clientIDCtrl.onchange () do this.modified = true this.realizeCommands() end
+	function secretCtrl.onchange () do this.modified = true this.realizeCommands() end
+
+	var originalConfig:GridUserConfigSchema
+	var modified = false
+
+	var layoutCtrl:LayoutGridControlType
+	var appSlugCtrl:TextControlType
+	var appIDCtrl:TextControlType
+	var clientIDCtrl:TextControlType
+	var secretCtrl:TextControlType
+
+	var applyCtrl:ButtonControlType
+	var cancelCtrl:ButtonControlType
+]
+
+function GitHubUI.constructor () do
+
+	this.appSlugCtrl = TextControlType([
+		mode = "edit",
+		label = "GitHub App Slug",
+		placeholder = "E.g., gridwhale-dev"
+	])
+
+	this.appIDCtrl = TextControlType([
+		mode = "edit",
+		label = "GitHub App ID",
+		placeholder = "E.g., 12345678"
+	])
+
+	this.clientIDCtrl = TextControlType([
+		mode = "edit",
+		label = "GitHub Client ID",
+		placeholder = "E.g., Abc1234d5e6F7",
+	])
+
+	this.secretCtrl = TextControlType([
+		mode = "editMultiline",
+		height = "120px",
+		label = "Private Key",
+		placeholder = "(Not displayed)" + Char(10) + "Enter private key with ""----- BEGIN ..."" and ""----- END"" fences.",
+	])
+
+	this.applyCtrl = ButtonControlType([
+		label = "Apply",
+		width = "100px",
+	])
+
+	this.cancelCtrl = ButtonControlType([
+		label = "Cancel",
+		width = "100px",
+	])
+
+	var commandBarCtrl = LayoutGridControlType([
+		rows = 1,
+		colWidth = [ "auto", "120px", "120px" ],
+		content = [
+			[	row=0,	col=1,	control=this.applyCtrl	],
+			[	row=0,	col=2,	control=this.cancelCtrl ],
+		],
+	])
+
+	var formCtrl = FormControlType([
+		background = "Neutral_Paper",
+		align = "left top",
+
+		content = [
+			[	id="githubAppSlug",		control=this.appSlugCtrl	],
+			[	id="githubAppID",		control=this.appIDCtrl		],
+			[	id="githubClientID",	control=this.clientIDCtrl	],
+			[	id="secretKey",			control=this.secretCtrl		],
+		]
+	])
+
+	this.layoutCtrl = LayoutGridControlType([
+		colWidth = [ "600px", "auto" ],
+		rows = 2,
+		rowHeight = [ "420px", "64px", "auto" ],
+		content = [
+			[	col=0,	row=0,	control=formCtrl		],
+			[	col=0,	row=1,	control=commandBarCtrl	],
+		]	
+	])
+end
+
+function GitHubUI.realize () do
+	var canModify = User.inGroup("$directors")
+
+	this.originalConfig = User.getConfig()
+	this.appSlugCtrl.data = this.originalConfig.githubAppSlug
+	this.appIDCtrl.data = this.originalConfig.githubAppID
+	this.clientIDCtrl.data = this.originalConfig.githubClientID
+
+	this.appSlugCtrl.readOnly = !canModify
+	this.appIDCtrl.readOnly = !canModify
+	this.clientIDCtrl.readOnly = !canModify
+	this.secretCtrl.readOnly = !canModify
+
+	this.modified = false
+	this.realizeCommands()
+end
+
+function GitHubUI.realizeCommands () do
+	var canModify = User.inGroup("$directors")
+
+	this.applyCtrl.disabled = !canModify || !this.modified
+	this.cancelCtrl.disabled = !canModify || !this.modified
+end
+
+function GitHubUI.applyCtrl.onaction () do
+	var canModify = User.inGroup("$directors")
+
+	if !canModify || !this.modified do
+		return false
+	end
+
+	var configUpdate = [=]
+
+	if this.originalConfig.githubAppSlug != this.appSlugCtrl.data do
+		configUpdate.githubAppSlug = this.appSlugCtrl.data
+	end
+
+	if String(this.originalConfig.githubAppID) != this.appIDCtrl.data do
+		configUpdate.githubAppID = Int32(this.appIDCtrl.data)
+	end
+
+	if this.originalConfig.githubClientID != this.clientIDCtrl.data do
+		configUpdate.githubClientID = this.clientIDCtrl.data
+	end
+
+	if this.originalConfig.githubPrivateKeySecretID != "Grid.github.app.private-key" do
+		configUpdate.githubPrivateKeySecretID = "Grid.github.app.private-key"
+	end
+
+	if configUpdate do
+		User.setConfig(configUpdate)
+	end
+
+	//	Set the private key, if we have the data.
+
+	if this.secretCtrl.data do
+		//	Make sure the key exists
+
+		if !Arcology.listSecrets()["Grid.github.app.private-key"] do
+			Arcology.addSecretID("Grid.github.app.private-key", [
+				displayName = "GitHub App Private Key",
+				service = "GitHub",
+			])
+		end
+
+		//	Now set the key
+
+		Arcology.setSecret("Grid.github.app.private-key", this.secretCtrl.data)
+	end
+
+end
+
+function GitHubUI.cancelCtrl.onaction () do
+	this.realize()
+end

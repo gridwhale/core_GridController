@@ -1,0 +1,112 @@
+
+class AnalyticsUI
+	isa IPageUI
+[
+
+	constructor () end
+
+	def control -> this.layoutCtrl
+	def commandBar -> []
+
+	function realize () end
+
+	----------------------------------------------------------------------------
+
+	var layoutCtrl
+	var mauCtrl
+	var programCountCtrl
+	var usageCtrl
+	var churnCtrl
+
+	var programTableCtrl
+]
+
+function AnalyticsUI.constructor () do
+
+	this.mauCtrl = UI.create("dial", [
+		background="Neutral_Paper",
+		border="narrow",
+		label="Monthly Active Users",
+	])
+
+	this.programCountCtrl = UI.create("dial", [
+		background="Neutral_Paper",
+		border="narrow",
+		label="Monthly Programs in Use",
+	])
+
+	this.usageCtrl = UI.create("dial", [
+		background="Neutral_Paper",
+		border="narrow",
+		label="Average Usage (Times/User/Month)",
+	])
+
+	this.churnCtrl = UI.create("dial", [
+		background="Neutral_Paper",
+		border="narrow",
+		label="Monthly Churn (%)",
+	])
+
+	this.programTableCtrl = UI.create("table", [
+	])
+
+	this.layoutCtrl = UI.create("layoutGrid", [
+		background="Neutral_Paper",
+		cols=4,
+		rows=6,
+
+		content=[
+			[	row=0,	col=0,			control=this.mauCtrl			],
+			[	row=0,	col=1,			control=this.programCountCtrl	],
+			[	row=0,	col=2,			control=this.usageCtrl			],
+			[	row=0,	col=3,			control=this.churnCtrl			],
+
+			[	row=1,	col=0,			control=this.programTableCtrl,		width=4,	height=5	],
+		]
+	])
+
+	UI.addTimer(60 * 1000, fn()->this.realize())
+end
+
+function AnalyticsUI.realize () do
+
+	schema ProgramTableSchema [
+		[	key=,		id=,			type=,		label=,						format=,		],
+		-----------------------------------------------------------------------------------------
+		[	"false",	"programID",	String,		"ID",						""				],
+		[	"false",	"name",			String,		"Program",					""				],
+		[	"false",	"mau",			Int32,		"MAU",						"#,###"			],
+		[	"false",	"usageHours",	Float64,	"Usage (Times/User/Month)",	"#,###.#"		],
+		[	"false",	"churn",		Float64,	"Monthly Churn",			"#.# %"			],
+		[	"false",	"errors",		Int32,		"Errors",					"#,###"			],
+	]
+
+	var totalData = Code.getUsage("/", [ period="calendarMonth" ])
+	var totalEntry = totalData[-1]
+
+	var mau = totalEntry.auBasic + totalEntry.auDisposable + totalEntry.auLicensed
+	var averageHours = if mau > 0 -> totalEntry.usageHours / mau else -> 0.0
+
+	this.mauCtrl.data = String(mau, "#,###")
+	this.programCountCtrl.data = String(totalEntry.programs, "#,###")
+	this.usageCtrl.data = String(averageHours, "#,###.#")
+	this.churnCtrl.data = String(totalEntry.churnLicensed, "#.# %")
+
+	var programData = Code.getUsage("/", [ period="calendarMonth", byProgram=true ])
+	this.programTableCtrl.data = Table(ProgramTableSchema, programData.map(
+		fn (row) do
+			var mau = row.auBasic + row.auDisposable + row.auLicensed
+			var averageHours = if mau > 0 -> row.usageHours / mau else -> 0.0
+
+			return [
+				programID=row.programID,
+				name=row.name,
+				mau=mau,
+				churn=row.churnLicensed,
+				usageHours=averageHours,
+				errors=row.errors
+			]
+		end
+	))
+
+end
