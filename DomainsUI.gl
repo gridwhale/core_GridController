@@ -12,8 +12,9 @@ class DomainsUI
 	def commandBar end
 	function realize () end
 
-	function AddBinding () end
-	function RemoveBinding (id) end
+	function cmdAddProgramBinding () end
+	function cmdAddProgramRedirect () end
+	function cmdRemoveBinding (id) end
 
 	----------------------------------------------------------------------------
 
@@ -22,13 +23,27 @@ class DomainsUI
 	var layoutCtrl:LayoutGridControlType
 	var tableCtrl:TableControlType
 
-	var hostTable
+	var hostTable:table of RouteDisplaySchema
+
+	schema RouteDisplaySchema [
+	[	key=,	id=,				type=,		label=,					format=,		ui=			],
+	-------------------------------------------------------------------------------------------------
+	[	true,	"id",				String,		"ID",					null,			"hidden"	],
+	[	false,	"type",				String,		"Route Type",			null,			"readOnly"	],
+									|	"service"
+									|	"program redirect"
+									|	"program binding"
+	[	false,	"hostname",			String,		"Hostname",				null,			"readOnly"	],
+	[	false,	"urlPath",			String,		"Path",					null,			"readOnly"	],
+	[	false,	"match",			String,		"Match",				null,			"readOnly"	],
+	[	false,	"target",			String,		"Target",				null,			"readOnly"	],
+	]
 ]
 
 function DomainsUI.constructor () do
 
 	this.tableCtrl = TableControlType([
-		columns = ["hostname", "service", "package", "ports", "protocols", "paths"]
+		columns = ["hostname", "urlPath", "type", "target", "match"]
 	])
 
 	this.layoutCtrl = LayoutGridControlType([
@@ -42,45 +57,202 @@ function DomainsUI.constructor () do
 end
 
 def DomainsUI.commandBar do
+	var menuCtrl = MenuControlType([
+		label = "Add",
+		content = [
+			[	label="Program Route",		fn onaction () do this.cmdAddProgramBinding() end	],
+			[	label="Program Redirect",	fn onaction () do this.cmdAddProgramRedirect() end	],
+		]
+	])
+
 	return [
-		[	label="Add",		fn onaction () -> this.AddBinding() ],
-		[	label="Delete",		fn onaction () -> this.RemoveBinding(this.tableCtrl.selection) ],
+		menuCtrl,
+		[	label="Delete",		fn onaction () -> this.cmdRemoveBinding(this.tableCtrl.selection) ],
 	]
 end
 
 function DomainsUI.realize () do
-	this.hostTable = Arcology.listRoutes()
-		.groupBy(.hostname, .service)
-		.summarize([
-			id = .hostname + "|" + .service,
+	var allRoutes = Arcology.listRoutes()
+
+	//	Start with all the routes to services.
+
+	this.hostTable = allRoutes
+		.filter(.action == "service")
+		.map(RouteDisplaySchema, [
+			id = .routeID,
+			type = "service",
 			hostname = .hostname,
-			service = .service,
-			package = .package,
-			ports = String(Array(.port)),
-			protocols = String(Array(.protocol)),
-			paths = String(Array(.urlPath))
+			urlPath = .urlPath,
+			match = .options.match || "prefix",
+			target = .target
+		])
+
+	//	Now add redirects to programs.
+
+	this.hostTable &= allRoutes
+		.filter(.action == "redirect")
+		.map(RouteDisplaySchema, [
+			id = .routeID,
+			type = "program redirect",
+			hostname = .hostname,
+			urlPath = .urlPath,
+			match = "prefix",
+			target = .target,
+		])
+
+	//	Now add routes to programs.
+
+	this.hostTable &= allRoutes
+		.filter(.action == "internalRewrite" && .options.match == "exact")
+		.map(RouteDisplaySchema, [
+			id = .routeID,
+			type = "program binding",
+			hostname = .hostname,
+			urlPath = .urlPath,
+			match = "exact",
+			target = .target,
 		])
 
 	this.tableCtrl.data = this.hostTable
 end
 
-function DomainsUI.AddBinding () do
-end
+function DomainsUI.cmdAddProgramBinding () do
+	schema InputRecord [
+		var hostname as "Hostname"
+		var path as "Path"
+		var target as "Program URL"
+	]
+	var result = UI.dialog(InputRecord, [ path="/" ], [
+		title = "Add Program Binding",
+		fn onaction (dlg, dlgResult) do
+			if !dlg.data.hostname do
+				dlg.error = "Hostname required"
+				return DialogResult.continue
+			else if !dlg.data.target do
+				dlg.error = "Target URL required"
+				return DialogResult.continue
+			end
 
-function DomainsUI.RemoveBinding (id) do
-	var row = this.hostTable[id]
-	var hostname = row.hostname
-	var service = row.service
-	if !hostname || !service do
-		return false
-	end
-
-	var result = UI.dialog("Are you sure you wish to delete the binding from " + hostname + " to " + service + "?")
+			return dlg.data
+		end
+	])
 	if !result do
 		return false
 	end
 
-	Arcology.unbindHost(hostname, service)
+	//	Make sure we don't already have a binding to this host and path
+
+	if Arcology.listRoutes().filter(.hostname == result.hostname && .urlPath == result.path) do
+		UI.dialog("That hostname and path is already bound.")
+		return false
+	end
+
+	//	Compute the target domain.
+
+	var domain = if result.target.startsWith("https://") -> result.target.sliced(8).split("/")[0]
+	if !domain do
+		UI.dialog("Invalid domain: " + result.target)
+		return false
+	end
+
+	//	Add a binding for the program.
+
+	Arcology.bindHostRedirect(result.hostname, result.target, [
+		urlPath = result.path,
+		action = "internalRewrite",
+		match = "exact",
+		unencryptedPort = 80,
+		preserveQuery = true,
+	])
+
+	//	Add a binding for other files.
+
+	Arcology.bindHostRedirect(result.hostname, "https://" + domain, [
+		urlPath = "/",
+		action = "internalRewrite",
+		match = "prefix",
+		rewrite = "appendPath",
+		unencryptedPort = 80,
+		preserveQuery = true,
+	])
+
+	this.realize()
+end
+
+function DomainsUI.cmdAddProgramRedirect () do
+	schema InputRecord [
+		var hostname as "Hostname"
+		var path as "Path"
+		var target as "Target URL"
+	]
+	var result = UI.dialog(InputRecord, [ path="/" ], [
+		title = "Add Program Redirect",
+		fn onaction (dlg, dlgResult) do
+			if !dlg.data.hostname do
+				dlg.error = "Hostname required"
+				return DialogResult.continue
+			else if !dlg.data.target do
+				dlg.error = "Target URL required"
+				return DialogResult.continue
+			end
+
+			return dlg.data
+		end
+	])
+	if !result do
+		return false
+	end
+
+	//	Make sure we don't already have a binding to this host and path
+
+	if Arcology.listRoutes().filter(.hostname == result.hostname && .urlPath == result.path) do
+		UI.dialog("That hostname and path is already bound.")
+		return false
+	end
+
+	Arcology.bindHostRedirect(result.hostname, result.target, [
+		urlPath = result.path,
+		action = "redirect",
+		match = "prefix",
+		unencryptedPort = 80,
+	])
+	this.realize()
+end
+
+function DomainsUI.cmdRemoveBinding (id) do
+	var row = Arcology.listRoutes()[id]
+	var hostname = row.hostname
+	var target = row.target
+	if !hostname && !target do
+		return false
+	end
+
+	if row.action == "service" do
+		UI.dialog("Unable to delete paths to built-in services.")
+		return false
+	end
+
+	var result = UI.dialog("Are you sure you wish to delete the binding from " + hostname + " to " + target + "?")
+	if !result do
+		return false
+	end
+
+	//	If this is an internal rewrite then we need to delete all for
+	//	the given hostname and path.
+
+	if row.action == "internalRewrite" do
+
+		var toDelete = Arcology.listRoutes().filter(.hostname == row.hostname && .urlPath == row.urlPath)
+		for binding in toDelete do
+			Arcology.deleteRoute(binding.routeID)
+		end
+
+	//	Otherwise, just delete the entry
+
+	else do
+		Arcology.deleteRoute(id)
+	end
+
 	this.realize()
 end
 
