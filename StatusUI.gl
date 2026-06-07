@@ -1,0 +1,99 @@
+--------------------------------------------------------------------------------
+|	GridController - StatusUI
+|
+|	© 2023 GridWhale Corporation. All Rights Reserved.
+--------------------------------------------------------------------------------
+
+class StatusUI
+	isa IPageUI
+[
+
+	constructor () end
+
+	def control -> this.layoutCtrl
+	def commandBar -> []
+
+	----------------------------------------------------------------------------
+
+	function realize () end
+
+	function coreStatusDS.onchange () -> this.realize()
+	function nodeStatusDS.onchange () -> this.realize()
+
+	var coreStatusDS = Data.open("/grid/cores")
+	var nodeStatusDS = Data.open("/grid/nodes")
+
+	var layoutCtrl = UI.create("layoutGrid")
+	var listCtrl = UI.create("table")
+	var usageCtrl = UI.create("dial")
+	var coreCountCtrl = UI.create("dial")
+	var programCountCtrl = UI.create("dial")
+	var datasetCountCtrl = UI.create("dial")
+]
+
+function StatusUI.constructor () do
+
+	this.listCtrl.data = this.coreStatusDS
+	this.listCtrl.design = [
+		columns= [
+			[	id="id",			label="ID" 			],
+			[	id="nodeID",		label="Node"		],
+			[	id="nodeVersion",	label="Version"		],
+			[	id="nodeStartedOn",	label="Started On"	],
+			[	id="status",		label="Status"		],
+			[	id="processID",		label="ProcessID"	],
+		]
+	]
+
+	this.usageCtrl.label = "Core Usage (%)"
+	this.usageCtrl.border = "narrow"
+
+	this.coreCountCtrl.label = "Core Count"
+	this.coreCountCtrl.border = "narrow"
+
+	this.programCountCtrl.label = "Process Count"
+	this.programCountCtrl.border = "narrow"
+
+	this.datasetCountCtrl.label = "Dataset Count"
+	this.datasetCountCtrl.border = "narrow"
+
+	this.layoutCtrl.cols = 4
+	this.layoutCtrl.rows = 6
+	this.layoutCtrl.background = "Neutral_Paper"
+	this.layoutCtrl.content = [
+		[ control=this.usageCtrl,			row=0,  col=0	],
+		[ control=this.coreCountCtrl,		row=0,  col=1	],
+		[ control=this.programCountCtrl,	row=0,	col=2	],
+		[ control=this.datasetCountCtrl,	row=0,  col=3	],
+
+		[ control=this.listCtrl,			row=1,  col=0,  width=4, height=5 ],
+	]
+end
+
+function StatusUI.realize () do
+
+	var coreTable = this.coreStatusDS.getValue()
+	var coreCount = coreTable.length
+	var machineTable = coreTable.grouped("nodeID")
+
+	var coreBusyCount = 0
+	for core in coreTable begin
+		if core.status == "runningJob" || core.status == "runningProgram" then
+			coreBusyCount += 1
+		end
+	end
+
+	//	Set the dials
+
+	if coreCount > 0 then
+		this.usageCtrl.data = Integer(100 * coreBusyCount / coreCount)
+	else
+		this.usageCtrl.data = 0
+	end
+
+	this.coreCountCtrl.data = coreCount
+
+	var nodeTable = this.nodeStatusDS.getValue()
+	this.programCountCtrl.data = nodeTable.sum(.programCount)
+	this.datasetCountCtrl.data = nodeTable.sum(.datasetCount)
+end

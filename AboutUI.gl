@@ -1,0 +1,48 @@
+--------------------------------------------------------------------------------
+|	GridController - AboutUI
+|
+|	© 2023 GridWhale Corporation. All Rights Reserved.
+--------------------------------------------------------------------------------
+
+def ABOUT_TEXT ->
+"""
+![GridWhale logo](http://gridwhale.com/res/GridWhaleLogo.png)
+
+GridWhale
+=========
+© 2023-{year} GridWhale Corporation. All Rights Reserved.
+
+[Support](mailto:support@gridwhale.com) • 
+[@gridwhale](https://x.com/gridwhale) • 
+[Report a Bug](https://ministry.kronosaur.com/program.hexm?id=355) • 
+[Terms of Service](https://multiverse.kronosaur.com/news.hexm?id=97) • 
+[Privacy Policy](https://multiverse.kronosaur.com/news.hexm?id=97)
+""".format([
+	year=DateTime().year
+])
+
+class AboutUI
+	isa IPageUI
+[
+
+	constructor () end
+
+	def control -> this.layoutCtrl
+	def commandBar -> []
+	function realize () do end
+
+	----------------------------------------------------------------------------
+
+	var layoutCtrl
+]
+
+function AboutUI.constructor () do
+	this.layoutCtrl = UI.create("text", [
+		format="markdown",
+		background="Neutral_Paper",
+		border="wide",
+		align="center",
+		data=ABOUT_TEXT
+	])
+
+end
